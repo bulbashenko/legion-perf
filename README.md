@@ -5,7 +5,7 @@ A Linux GUI app for Lenovo Legion laptops that replaces the Windows LenovoContro
 Tested on: **Lenovo Legion Y720** (Intel Core i7-7700HQ + NVIDIA GTX 1060, Bazzite OS / Fedora).  
 Other Legion models with the same EC register layout should work as well.
 
-![screenshot placeholder](screenshot.png)
+![Legion Performance Controller](image.png)
 
 ---
 
