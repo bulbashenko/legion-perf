@@ -202,9 +202,10 @@ def _activate_running_instance() -> bool:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Legion Performance Controller")
-    parser.add_argument("--minimized", action="store_true", help="start in the system tray")
+    # Приложение всегда стартует в трее; флаг оставлен для старых записей автозапуска.
+    parser.add_argument("--minimized", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--version", action="version", version=__version__)
-    args, qt_args = parser.parse_known_args()
+    _, qt_args = parser.parse_known_args()
 
     app = QApplication([sys.argv[0], *qt_args])
     app.setApplicationName("Legion Performance Controller")
@@ -226,14 +227,11 @@ def main() -> None:
 
     server.newConnection.connect(on_activate_request)
 
-    if args.minimized:
-        # Автозапуск: сразу в трей. Если трей так и не появился — показываем окно,
-        # иначе до приложения не добраться.
-        def fallback() -> None:
-            if not QSystemTrayIcon.isSystemTrayAvailable():
-                controller.show_window()
+    # Окно открывается из трея. Если трей так и не появился — показываем окно,
+    # иначе до приложения не добраться.
+    def fallback() -> None:
+        if not QSystemTrayIcon.isSystemTrayAvailable():
+            controller.show_window()
 
-        QTimer.singleShot(5000, fallback)
-    else:
-        controller.show_window()
+    QTimer.singleShot(5000, fallback)
     sys.exit(app.exec())

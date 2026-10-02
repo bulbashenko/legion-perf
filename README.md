@@ -24,7 +24,7 @@ CPU/GPU performance profiles are intentionally left to the system (`power-profil
 ```
 
 - **`legion-perfd`** — a small systemd service and the only privileged part. It exposes a D-Bus API and checks every change with polkit (`io.github.bulbashenko.LegionPerf.configure`). The active local session needs no password; remote and inactive sessions need admin authentication. Reading state is open to everyone.
-- **`legion-perf`** — unprivileged Qt tray app. It shows the CPU temperature in the tray icon (green < 70 °C, yellow < 85 °C, red above; a blue frame means Extreme Cooling is on). The window has CPU/RAM/iGPU/NVIDIA metrics and the Extreme Cooling switch.
+- **`legion-perf`** — unprivileged Qt tray app. It shows the CPU temperature in the tray icon (green < 70 °C, yellow < 85 °C, red above; a blue frame means Extreme Cooling is on). It always starts in the tray only; clicking the icon (or launching it again from the menu) opens the window with CPU/RAM/iGPU/NVIDIA metrics and the Extreme Cooling switch.
 - **State:** Extreme Cooling set through the daemon is re-applied after resume from suspend. After a reboot nothing is touched: the firmware defaults apply, so Extreme Cooling starts off.
 
 ## Why Extreme Cooling goes through `ec_sys`
@@ -63,7 +63,7 @@ The package builds from the **committed** `HEAD` of this repository. It installs
 | `/usr/share/dbus-1/system.d/…`, `system-services/…` | D-Bus policy and activation |
 | `/usr/share/polkit-1/actions/io.github.bulbashenko.LegionPerf.policy` | polkit action |
 | `/usr/lib/modules-load.d/legion-perf.conf`, `/usr/lib/modprobe.d/legion-perf.conf` | load `ec_sys` with `write_support=1` at boot |
-| `/etc/xdg/autostart/legion-perf.desktop` | start the GUI minimised to tray on login |
+| `/etc/xdg/autostart/legion-perf.desktop` | start the GUI in the tray on login |
 
 Remove with `sudo pacman -R legion-perf`.
 

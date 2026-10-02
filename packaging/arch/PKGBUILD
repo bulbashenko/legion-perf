@@ -1,7 +1,7 @@
 # Локальный пакет: собирается из закоммиченного HEAD этого репозитория.
 #   cd packaging/arch && makepkg -si
 pkgname=legion-perf
-pkgver=2.1.0
+pkgver=2.1.1
 pkgrel=1
 pkgdesc="Extreme Cooling and hardware monitoring for the Lenovo Legion Y720"
 arch=(any)
