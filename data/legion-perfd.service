@@ -1,0 +1,34 @@
+[Unit]
+Description=Legion Performance Controller daemon
+Documentation=https://github.com/bulbashenko/legion-perf
+After=systemd-modules-load.service
+
+[Service]
+Type=dbus
+BusName=io.github.bulbashenko.LegionPerf
+ExecStart=/usr/bin/legion-perfd
+Restart=on-failure
+
+# Демону нужен только D-Bus, /sys/kernel/debug/ec и /sys/bus/platform.
+# Права на эти файлы даёт uid 0 как владелец, поэтому capabilities не нужны.
+CapabilityBoundingSet=
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+PrivateNetwork=yes
+RestrictAddressFamilies=AF_UNIX
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,21 @@
+_load_ec_sys() {
+  # ec_sys мог быть загружен раньше без write_support — перезагружаем с нашими опциями
+  if [ "$(cat /sys/module/ec_sys/parameters/write_support 2>/dev/null)" != "Y" ]; then
+    modprobe -r ec_sys 2>/dev/null
+    modprobe ec_sys || echo ">>> не удалось загрузить ec_sys: Extreme Cooling будет недоступен"
+  fi
+}
+
+post_install() {
+  _load_ec_sys
+  echo ">>> Включите демон:  sudo systemctl enable --now legion-perfd"
+}
+
+post_upgrade() {
+  _load_ec_sys
+  systemctl try-restart legion-perfd.service
+}
+
+pre_remove() {
+  systemctl disable --now legion-perfd.service 2>/dev/null || true
+}

@@ -1,0 +1,50 @@
+# Локальный пакет: собирается из закоммиченного HEAD этого репозитория.
+#   cd packaging/arch && makepkg -si
+pkgname=legion-perf
+pkgver=2.0.0
+pkgrel=1
+pkgdesc="Extreme Cooling, fan mode and hardware monitoring for the Lenovo Legion Y720"
+arch=(any)
+url="https://github.com/bulbashenko/legion-perf"
+license=(unknown)  # LICENSE в репозитории пока нет
+depends=(python python-dbus-fast pyside6 polkit)
+makedepends=(git python-build python-installer python-setuptools python-wheel)
+checkdepends=(python-pytest python-pytest-asyncio)
+optdepends=('nvidia-utils: NVIDIA GPU monitoring')
+install=legion-perf.install
+
+_repo="$(git -C "$startdir" rev-parse --show-toplevel)"
+
+prepare() {
+  rm -rf "$srcdir/$pkgname"
+  mkdir "$srcdir/$pkgname"
+  git -C "$_repo" archive HEAD | tar -x -C "$srcdir/$pkgname"
+}
+
+build() {
+  cd "$pkgname"
+  python -m build --wheel --no-isolation
+}
+
+check() {
+  cd "$pkgname"
+  PYTHONPATH=src python -m pytest -q
+}
+
+package() {
+  cd "$pkgname"
+  python -m installer --destdir="$pkgdir" dist/*.whl
+
+  install -Dm644 data/legion-perfd.service "$pkgdir/usr/lib/systemd/system/legion-perfd.service"
+  install -Dm644 data/io.github.bulbashenko.LegionPerf.conf \
+    "$pkgdir/usr/share/dbus-1/system.d/io.github.bulbashenko.LegionPerf.conf"
+  install -Dm644 data/io.github.bulbashenko.LegionPerf.service \
+    "$pkgdir/usr/share/dbus-1/system-services/io.github.bulbashenko.LegionPerf.service"
+  install -Dm644 data/io.github.bulbashenko.LegionPerf.policy \
+    "$pkgdir/usr/share/polkit-1/actions/io.github.bulbashenko.LegionPerf.policy"
+  install -Dm644 data/modules-load.conf "$pkgdir/usr/lib/modules-load.d/legion-perf.conf"
+  install -Dm644 data/modprobe.conf "$pkgdir/usr/lib/modprobe.d/legion-perf.conf"
+  install -Dm644 data/legion-perf.desktop "$pkgdir/usr/share/applications/legion-perf.desktop"
+  install -Dm644 data/legion-perf-autostart.desktop "$pkgdir/etc/xdg/autostart/legion-perf.desktop"
+  install -Dm644 data/legion-perf.svg "$pkgdir/usr/share/icons/hicolor/scalable/apps/legion-perf.svg"
+}

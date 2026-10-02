@@ -1,171 +1,136 @@
 # Legion Performance Controller
 
-A Linux GUI app for Lenovo Legion laptops that replaces the Windows LenovoController: live hardware monitoring and Extreme Cooling (max fan speed) — all in a native Qt/KDE interface with system tray support.
-
-CPU/GPU performance profiles are intentionally left to the system (`power-profiles-daemon`, `tuned`, KDE's power settings) — they already manage `intel_pstate` EPP correctly.
-
-Tested on: **Lenovo Legion Y720** (Intel Core i7-7700HQ + NVIDIA GTX 1060, Bazzite OS / Fedora).  
-Other Legion models with the same EC register layout should work as well.
+Extreme Cooling, fan mode, camera power and hardware monitoring for the **Lenovo Legion Y720** on Linux.
 
 ![Legion Performance Controller](image.png)
 
+Tested on: Legion Y720 (BIOS 4GCN, i7-7700HQ + GTX 1060), CachyOS. Other Y520/Y720-era Legions with the same EC layout may work, but are not a goal of this project.
+
+CPU/GPU performance profiles are intentionally left to the system (`power-profiles-daemon`, `tuned`, KDE power settings).
+
 ---
+
+## Architecture
+
+```
+┌──────────────────────┐   system D-Bus    ┌───────────────────────────┐
+│ legion-perf (GUI)    │ ────────────────▶ │ legion-perfd (root)       │
+│ tray + window        │  io.github.       │  polkit check per call    │
+│ runs as your user    │  bulbashenko.     │  restores state on resume │
+│ reads /proc, /sys    │  LegionPerf       │                           │
+└──────────────────────┘                   └──────┬─────────────┬──────┘
+                                                  │             │
+                                     ec_sys (EC 0xBD)   ideapad_laptop sysfs
+                                                         (fan_mode, camera_power)
+```
+
+- **`legion-perfd`** — a small systemd service and the only privileged part. It exposes a D-Bus API and checks every change with polkit (`io.github.bulbashenko.LegionPerf.configure`). The active local session needs no password; remote and inactive sessions need admin authentication. Reading state is open to everyone.
+- **`legion-perf`** — unprivileged Qt tray app. It shows the CPU temperature in the tray icon (green < 70 °C, yellow < 85 °C, red above; a blue frame means Extreme Cooling is on). The window has CPU/RAM/iGPU/NVIDIA metrics and the controls.
+- **State:** settings changed through the daemon are re-applied after resume from suspend. After a reboot nothing is touched: the firmware defaults apply, so Extreme Cooling starts off.
 
 ## Features
 
-- **Live monitoring** — CPU load, frequency, temperature; RAM usage; Intel iGPU frequency; NVIDIA GPU load, frequency, temperature, power draw (updated every 1–2 s)
-- **Extreme Cooling** — sets Embedded Controller register `0xBD` (the same register as [extremecooling4linux](https://gitlab.com/OdinTdh/extremecooling4linux)) through the kernel's `ec_sys` driver, forcing fans to maximum speed
-- **System tray** — close the window to minimise to tray; toggle Extreme Cooling from the tray context menu without opening the window; `--minimized` starts straight into the tray
-- **Polkit auth** — privileged operations request a KDE/GNOME password dialog via `pkexec`; the app itself runs as your normal user
+| Feature | Kernel interface |
+|---|---|
+| Extreme Cooling (fans at max) | EC register `0xBD` via `ec_sys` |
+| Fan mode | `ideapad_laptop` `fan_mode` |
+| Camera power | `ideapad_laptop` `camera_power` |
+
+### Why Extreme Cooling goes through `ec_sys`
+
+On Windows this is the WMI method `SetFanCooling` on `LENOVO_GAMEZONE_DATA`. On Linux no driver implements it for the Y720:
+
+- the mainline `lenovo-wmi-gamezone` driver only supports SmartFan-capable (2020+) firmware and fails to probe on the Y720;
+- LenovoLegionLinux calls a WMI GUID that the Y720 does not have.
+
+`ec_sys` is the least invasive working option. It writes through the kernel's ACPI EC driver with its locking, unlike raw `/dev/port` I/O, and uses the same register and values as LenovoLegionLinux (`EXT_MAXIMUMFANSPEED`).
+
+The proper long-term fix would be `pwm1_enable` support in `lenovo-wmi-gamezone` backed by `SetFanCooling`. The daemon keeps hardware access behind a small `Control` interface (`src/legion_perf/hardware.py`), so such a backend can replace `ec_sys` without touching anything else.
 
 ---
 
-## Requirements
+## Installation (Arch / CachyOS)
 
-- Linux (uses `/sys`, `/proc` — **not cross-platform**)
-- Python 3.10 or newer
-- **PySide6** (`python3-pyside6` package or `pip install --user PySide6`)
-- `pkexec` and a polkit daemon (standard on KDE Plasma, GNOME, and most desktop Linux distros)
-- NVIDIA proprietary driver + `nvidia-smi` (optional — only needed for NVIDIA monitoring)
-- `ec_sys` kernel module (shipped with most distro kernels; loaded on demand by the helper) and debugfs mounted at `/sys/kernel/debug`
-
-### Installing PySide6
-
-**Fedora / Bazzite (rpm-ostree):**
 ```bash
-rpm-ostree install python3-pyside6
-# reboot or enter a new session after layering
+cd packaging/arch
+makepkg -si
+sudo systemctl enable --now legion-perfd
 ```
 
-**Universal (pip):**
-```bash
-pip install --user PySide6
-```
+The package builds from the **committed** `HEAD` of this repository. It installs:
 
----
+| Path | Purpose |
+|---|---|
+| `/usr/bin/legion-perfd`, `/usr/bin/legion-perf` | daemon and GUI |
+| `/usr/lib/systemd/system/legion-perfd.service` | hardened systemd unit |
+| `/usr/share/dbus-1/system.d/…`, `system-services/…` | D-Bus policy and activation |
+| `/usr/share/polkit-1/actions/io.github.bulbashenko.LegionPerf.policy` | polkit action |
+| `/usr/lib/modules-load.d/legion-perf.conf`, `/usr/lib/modprobe.d/legion-perf.conf` | load `ec_sys` with `write_support=1` at boot |
+| `/etc/xdg/autostart/legion-perf.desktop` | start the GUI minimised to tray on login |
 
-## Manual Installation
+Remove with `sudo pacman -R legion-perf`.
 
-The app consists of a single Python file (`legion_perf.py`) that acts as both the privileged helper (when called via `pkexec`) and the GUI (when launched normally).
-
-### 1. Install the privileged helper
-
-```bash
-sudo install -m 755 legion_perf.py /usr/local/bin/legion-perf-helper
-```
-
-### 2. Create the polkit action
+### Migrating from v1 (`legion_perf.py`)
 
 ```bash
-sudo mkdir -p /etc/polkit-1/actions
-sudo tee /etc/polkit-1/actions/io.github.legion.perf.policy > /dev/null << 'EOF'
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE policyconfig PUBLIC
- "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
- "http://www.freedesktop.org/standards/PolicyKit/1.0/policyconfig.dtd">
-<policyconfig>
-  <action id="io.github.legion.perf.helper">
-    <description>Legion Performance Controller</description>
-    <message>Enter your password to change performance settings</message>
-    <defaults>
-      <allow_any>auth_admin</allow_any>
-      <allow_inactive>auth_admin</allow_inactive>
-      <allow_active>auth_admin</allow_active>
-    </defaults>
-    <annotate key="org.freedesktop.policykit.exec.path">/usr/local/bin/legion-perf-helper</annotate>
-    <annotate key="org.freedesktop.policykit.exec.allow_gui">true</annotate>
-  </action>
-</policyconfig>
-EOF
-```
-
-### 3. Install the user GUI launcher
-
-```bash
-mkdir -p ~/.local/bin
-install -m 755 legion_perf.py ~/.local/bin/legion-perf
-```
-
-Make sure `~/.local/bin` is in your `PATH` (it usually is on modern distros). If not, add to `~/.bashrc`:
-```bash
-export PATH="$HOME/.local/bin:$PATH"
-```
-
-### 4. Create a KDE/desktop menu entry (optional)
-
-```bash
-mkdir -p ~/.local/share/applications
-cat > ~/.local/share/applications/legion-perf.desktop << EOF
-[Desktop Entry]
-Version=1.0
-Type=Application
-Name=Legion Performance Controller
-Comment=CPU, GPU and fan control for Lenovo Legion
-Exec=$HOME/.local/bin/legion-perf
-Icon=cpu-x
-Terminal=false
-Categories=System;Settings;HardwareSettings;
-Keywords=cpu;gpu;performance;fan;cooling;legion;
-EOF
-```
-
-### 5. Autostart minimised to tray (optional)
-
-```bash
-mkdir -p ~/.config/autostart
-sed 's|^Exec=.*|& --minimized|' ~/.local/share/applications/legion-perf.desktop \
-    > ~/.config/autostart/legion-perf.desktop
-```
-
-### Running
-
-```bash
-legion-perf
-# or directly:
-python3 legion_perf.py
+sudo rm -f /usr/local/bin/legion-perf-helper /etc/polkit-1/actions/io.github.legion.perf.policy
+rm -f ~/.local/bin/legion-perf ~/.local/share/applications/legion-perf.desktop \
+      ~/.config/autostart/legion-perf.desktop
 ```
 
 ---
 
-## How It Works
+## D-Bus API
 
-### Extreme Cooling
+Bus name and interface `io.github.bulbashenko.LegionPerf`, object `/io/github/bulbashenko/LegionPerf`.
 
-Lenovo Legion laptops expose a fan control register in the **Embedded Controller** at address `0xBD`:
+| Member | Type | |
+|---|---|---|
+| `Features` | property `as` | available of `extreme-cooling`, `fan-mode`, `camera-power` |
+| `ExtremeCooling` | property `b` | |
+| `FanMode` | property `s` | `super-silent`, `standard`, `dust-cleaning`, `efficient-thermal-dissipation` |
+| `CameraPower` | property `b` | |
+| `Version` | property `s` | |
+| `SetExtremeCooling(b)`, `SetFanMode(s)`, `SetCameraPower(b)` | methods | polkit-checked |
 
-| Value | Effect |
-|-------|--------|
-| `0x40` | Extreme Cooling ON — fans run at maximum speed |
-| `0x00` | Extreme Cooling OFF — fans under firmware control |
+Changes emit `org.freedesktop.DBus.Properties.PropertiesChanged`. From the shell:
 
-The helper accesses the EC through the kernel's `ec_sys` driver (`/sys/kernel/debug/ec/ec0/io`, loaded as `modprobe ec_sys write_support=1`). Unlike raw port I/O via `/dev/port`, this goes through the kernel ACPI EC driver and its locking, so it cannot collide with EC transactions the kernel itself is running (battery, thermal, hotkeys). No out-of-tree modules are required.
+```bash
+busctl get-property io.github.bulbashenko.LegionPerf /io/github/bulbashenko/LegionPerf \
+  io.github.bulbashenko.LegionPerf ExtremeCooling
+busctl call io.github.bulbashenko.LegionPerf /io/github/bulbashenko/LegionPerf \
+  io.github.bulbashenko.LegionPerf SetExtremeCooling b true
+```
 
-### Monitoring
-
-- CPU load / frequency / temperature — `/proc/stat`, `cpufreq`, `coretemp` hwmon
-- Intel iGPU — actual frequency from `/sys/class/drm/cardN/gt_act_freq_mhz` (shows *idle (RC6)* when the GPU is power-gated)
-- NVIDIA — `nvidia-smi` query every 2 s; skipped while the dGPU is runtime-suspended (D3), since `nvidia-smi` would wake it up
+Errors: `….Error.NotAuthorized`, `….Error.NotSupported`, `….Error.InvalidArgs`, `….Error.Hardware`.
 
 ---
 
-## Safety Notes
+## Development
 
-- Extreme Cooling only switches the fan mode bit the firmware itself exposes; turning it off returns the fans to firmware control.
-- All privileged operations go through `pkexec` and require explicit user authentication.
-- Kernel lockdown (`integrity`/`confidentiality`, e.g. with Secure Boot on some distros) blocks debugfs writes — Extreme Cooling won't work in that case.
+```bash
+python -m venv --system-site-packages .venv   # PySide6 from the system package
+.venv/bin/pip install -e ".[gui,dev]"
+
+.venv/bin/ruff check src tests && .venv/bin/ruff format --check src tests
+.venv/bin/mypy
+.venv/bin/pytest
+```
+
+The tests never touch real hardware. The daemon runs against a fake sysfs/debugfs tree on a private `dbus-daemon`, with polkit replaced by a test authorizer, and the GUI client is tested against that daemon in a subprocess. CI runs the same checks on GitHub Actions.
+
+To run the daemon by hand without root, on the session bus and without polkit:
+
+```bash
+.venv/bin/legion-perfd --session --root /path/to/fake/root -v
+```
 
 ---
 
 ## Troubleshooting
 
-**`pkexec` returns code 127** — the helper is not installed at `/usr/local/bin/legion-perf-helper`. Run step 1 of the installation.
+**Window says "Daemon is not available"** — `systemctl status legion-perfd` and `journalctl -u legion-perfd`.
 
-**`pkexec` returns code 126** — polkit denied the action. Check that the `.policy` file is in place and readable.
+**Extreme Cooling is missing from the controls** — `ec_sys` is not loaded with write support. Check that `cat /sys/module/ec_sys/parameters/write_support` prints `Y`, and that `/sys/kernel/security/lockdown` shows `[none]` (kernel lockdown blocks debugfs writes).
 
-**Extreme Cooling has no effect** — your Legion model may use a different EC register. Check [extremecooling4linux](https://gitlab.com/OdinTdh/extremecooling4linux) for supported models.
-
-**NVIDIA row shows "suspended (D3)"** — the dGPU is powered down by runtime PM (expected under Optimus with no workload). **"unavailable"** — `nvidia-smi` is missing or failed.
-
-**Extreme Cooling fails with `helper error`** — check that `ec_sys` exists (`modinfo ec_sys`) and that `/sys/kernel/security/lockdown` shows `[none]`.
-
-**PySide6 not found** — install it via `rpm-ostree install python3-pyside6` (Bazzite/Fedora) or `pip install --user PySide6`.
+**NVIDIA row shows "suspended (D3)"** — the dGPU is runtime-suspended and is deliberately not polled, because `nvidia-smi` would wake it. Pascal cards such as the GTX 1060 do not support runtime D3, so on the Y720 the row always shows live data.

@@ -1,0 +1,5 @@
+[D-BUS Service]
+Name=io.github.bulbashenko.LegionPerf
+Exec=/bin/false
+User=root
+SystemdService=legion-perfd.service
