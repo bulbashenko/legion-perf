@@ -129,3 +129,9 @@ To run the daemon by hand without root, on the session bus and without polkit:
 **Extreme Cooling switch is missing** — `ec_sys` is not loaded with write support. Check that `cat /sys/module/ec_sys/parameters/write_support` prints `Y`, and that `/sys/kernel/security/lockdown` shows `[none]` (kernel lockdown blocks debugfs writes).
 
 **NVIDIA row shows "suspended (D3)"** — the dGPU is runtime-suspended and is deliberately not polled, because `nvidia-smi` would wake it. Pascal cards such as the GTX 1060 do not support runtime D3, so on the Y720 the row always shows live data.
+
+---
+
+## License
+
+GPL-3.0 — see [LICENSE](LICENSE). The v1 single-file version is kept in the [`v1`](../../tree/v1) branch.

@@ -6,7 +6,7 @@ pkgrel=1
 pkgdesc="Extreme Cooling and hardware monitoring for the Lenovo Legion Y720"
 arch=(any)
 url="https://github.com/bulbashenko/legion-perf"
-license=(unknown)  # LICENSE в репозитории пока нет
+license=(GPL-3.0-only)
 depends=(python python-dbus-fast pyside6 polkit)
 makedepends=(git python-build python-installer python-setuptools python-wheel)
 checkdepends=(python-pytest python-pytest-asyncio)
@@ -47,4 +47,5 @@ package() {
   install -Dm644 data/legion-perf.desktop "$pkgdir/usr/share/applications/legion-perf.desktop"
   install -Dm644 data/legion-perf-autostart.desktop "$pkgdir/etc/xdg/autostart/legion-perf.desktop"
   install -Dm644 data/legion-perf.svg "$pkgdir/usr/share/icons/hicolor/scalable/apps/legion-perf.svg"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
 }

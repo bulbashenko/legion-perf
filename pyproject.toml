@@ -7,6 +7,8 @@ name = "legion-perf"
 dynamic = ["version"]
 description = "Extreme Cooling and hardware monitoring for the Lenovo Legion Y720"
 readme = "README.md"
+license = "GPL-3.0-only"
+license-files = ["LICENSE"]
 requires-python = ">=3.12"
 dependencies = ["dbus-fast>=2.0"]
 
