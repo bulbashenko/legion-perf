@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "legion-perf"
 dynamic = ["version"]
-description = "Extreme Cooling, fan mode and monitoring for the Lenovo Legion Y720"
+description = "Extreme Cooling and hardware monitoring for the Lenovo Legion Y720"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = ["dbus-fast>=2.0"]

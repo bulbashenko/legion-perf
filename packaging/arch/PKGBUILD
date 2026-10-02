@@ -1,9 +1,9 @@
 # Локальный пакет: собирается из закоммиченного HEAD этого репозитория.
 #   cd packaging/arch && makepkg -si
 pkgname=legion-perf
-pkgver=2.0.0
+pkgver=2.1.0
 pkgrel=1
-pkgdesc="Extreme Cooling, fan mode and hardware monitoring for the Lenovo Legion Y720"
+pkgdesc="Extreme Cooling and hardware monitoring for the Lenovo Legion Y720"
 arch=(any)
 url="https://github.com/bulbashenko/legion-perf"
 license=(unknown)  # LICENSE в репозитории пока нет

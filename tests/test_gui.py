@@ -12,11 +12,11 @@ from PySide6.QtCore import QEventLoop, QTimer
 from PySide6.QtDBus import QDBusConnection
 from PySide6.QtWidgets import QApplication
 
-from legion_perf.api import FanMode, Feature
+from legion_perf.api import Feature
 from legion_perf.gui.client import DaemonClient, DaemonState
 from legion_perf.gui.icon import GREEN, GREY, RED, YELLOW, temp_color, temp_icon
 
-from .conftest import EC_IO, IDEAPAD, ec_byte
+from .conftest import EC_IO, ec_byte
 
 
 @pytest.fixture(scope="module")
@@ -74,10 +74,8 @@ def test_refresh(make_client: Callable[[str], DaemonClient], daemon_bus: str) ->
     client = make_client(daemon_bus)
     (state,) = wait_for(client.state_changed, client.refresh)
     assert state == DaemonState(
-        features={Feature.EXTREME_COOLING, Feature.FAN_MODE, Feature.CAMERA_POWER},
+        features={Feature.EXTREME_COOLING},
         extreme_cooling=False,
-        fan_mode=FanMode.STANDARD,
-        camera_power=True,
     )
 
 
@@ -87,11 +85,9 @@ def test_set_calls(make_client: Callable[[str], DaemonClient], daemon_bus: str, 
     assert state.extreme_cooling is True
     assert ec_byte(fake_root, 0xBD) == 0x40
 
-    wait_for(client.state_changed, lambda: client.set_fan_mode(FanMode.SUPER_SILENT))
-    assert (fake_root / IDEAPAD / "fan_mode").read_text().strip() == "0"
-
-    wait_for(client.state_changed, lambda: client.set_camera_power(False))
-    assert (fake_root / IDEAPAD / "camera_power").read_text().strip() == "0"
+    (state,) = wait_for(client.state_changed, lambda: client.set_extreme_cooling(False))
+    assert state.extreme_cooling is False
+    assert ec_byte(fake_root, 0xBD) == 0x00
 
 
 def test_call_error_is_reported(

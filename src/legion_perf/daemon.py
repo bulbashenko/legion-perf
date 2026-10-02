@@ -13,7 +13,7 @@ import contextvars
 import logging
 import signal
 from pathlib import Path
-from typing import Any, ClassVar, Protocol
+from typing import ClassVar, Protocol
 
 from dbus_fast import BusType, DBusError, Message, MessageType, PropertyAccess, RequestNameReply, Variant
 from dbus_fast.aio import MessageBus
@@ -23,13 +23,11 @@ from . import __version__
 from .api import (
     BUS_NAME,
     ERROR_HARDWARE,
-    ERROR_INVALID_ARGS,
     ERROR_NOT_AUTHORIZED,
     ERROR_NOT_SUPPORTED,
     INTERFACE,
     OBJECT_PATH,
     POLKIT_ACTION,
-    FanMode,
     Feature,
 )
 from .hardware import Hardware, HardwareError
@@ -99,8 +97,6 @@ class AllowAll:
 class LegionInterface(ServiceInterface):
     _PROPERTY: ClassVar[dict[Feature, str]] = {
         Feature.EXTREME_COOLING: "ExtremeCooling",
-        Feature.FAN_MODE: "FanMode",
-        Feature.CAMERA_POWER: "CameraPower",
     }
 
     def __init__(self, hw: Hardware, authorizer: Authorizer) -> None:
@@ -108,12 +104,12 @@ class LegionInterface(ServiceInterface):
         self._hw = hw
         self._auth = authorizer
         # Значения, выставленные через демон с момента загрузки: их и возвращаем после сна.
-        self.desired: dict[Feature, Any] = {}
+        self.desired: dict[Feature, bool] = {}
         self._lock = asyncio.Lock()
 
     # ── Чтение ──────────────────────────────────────────────────────────────
 
-    def _read(self, feature: Feature, default: Any) -> Any:
+    def _read(self, feature: Feature, default: bool) -> bool:
         control = self._hw.controls.get(feature)
         if control is None:
             return default
@@ -133,20 +129,11 @@ class LegionInterface(ServiceInterface):
 
     @dbus_property(access=PropertyAccess.READ)
     def ExtremeCooling(self) -> "b":
-        return bool(self._read(Feature.EXTREME_COOLING, False))
-
-    @dbus_property(access=PropertyAccess.READ)
-    def FanMode(self) -> "s":
-        mode = self._read(Feature.FAN_MODE, None)
-        return mode.value if mode else ""
-
-    @dbus_property(access=PropertyAccess.READ)
-    def CameraPower(self) -> "b":
-        return bool(self._read(Feature.CAMERA_POWER, False))
+        return self._read(Feature.EXTREME_COOLING, False)
 
     # ── Запись ──────────────────────────────────────────────────────────────
 
-    async def _set(self, feature: Feature, value: Any) -> None:
+    async def _set(self, feature: Feature, value: bool) -> None:
         control = self._hw.controls.get(feature)
         if control is None:
             raise DBusError(ERROR_NOT_SUPPORTED, f"{feature.value} is not available")
@@ -158,24 +145,12 @@ class LegionInterface(ServiceInterface):
                 log.error("%s: %s", feature.value, e)
                 raise DBusError(ERROR_HARDWARE, str(e)) from e
             self.desired[feature] = value
-        log.info("%s set to %s by %s", feature.value, _dbus_value(value), _caller.get())
-        self.emit_properties_changed({self._PROPERTY[feature]: _dbus_value(value)})
+        log.info("%s set to %s by %s", feature.value, value, _caller.get())
+        self.emit_properties_changed({self._PROPERTY[feature]: value})
 
     @method()
     async def SetExtremeCooling(self, on: "b") -> None:
         await self._set(Feature.EXTREME_COOLING, on)
-
-    @method()
-    async def SetFanMode(self, mode: "s") -> None:
-        try:
-            value = FanMode(mode)
-        except ValueError:
-            raise DBusError(ERROR_INVALID_ARGS, f"unknown fan mode {mode!r}") from None
-        await self._set(Feature.FAN_MODE, value)
-
-    @method()
-    async def SetCameraPower(self, on: "b") -> None:
-        await self._set(Feature.CAMERA_POWER, on)
 
     # ── Сон ─────────────────────────────────────────────────────────────────
 
@@ -188,16 +163,12 @@ class LegionInterface(ServiceInterface):
                 try:
                     if control.get() != value:
                         control.set(value)
-                        changed[self._PROPERTY[feature]] = _dbus_value(value)
-                        log.info("restored %s = %s after resume", feature.value, _dbus_value(value))
+                        changed[self._PROPERTY[feature]] = value
+                        log.info("restored %s = %s after resume", feature.value, value)
                 except HardwareError as e:
                     log.error("restore %s: %s", feature.value, e)
         if changed:
             self.emit_properties_changed(changed)
-
-
-def _dbus_value(value: Any) -> Any:
-    return value.value if isinstance(value, FanMode) else value
 
 
 async def watch_sleep(bus: MessageBus, iface: LegionInterface) -> None:

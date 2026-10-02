@@ -8,17 +8,15 @@ from typing import Any
 from PySide6.QtCore import QObject, Signal
 from PySide6.QtDBus import QDBusConnection, QDBusInterface, QDBusPendingCallWatcher
 
-from ..api import BUS_NAME, INTERFACE, OBJECT_PATH, FanMode, Feature
+from ..api import BUS_NAME, INTERFACE, OBJECT_PATH, Feature
 
-_PROPERTIES = ("Features", "ExtremeCooling", "FanMode", "CameraPower")
+_PROPERTIES = ("Features", "ExtremeCooling")
 
 
 @dataclass
 class DaemonState:
     features: set[Feature] = field(default_factory=set)
     extreme_cooling: bool = False
-    fan_mode: FanMode | None = None
-    camera_power: bool = False
 
     @classmethod
     def from_properties(cls, props: dict[str, Any]) -> DaemonState:
@@ -26,8 +24,6 @@ class DaemonState:
         return cls(
             features={known[f] for f in props["Features"] if f in known},
             extreme_cooling=bool(props["ExtremeCooling"]),
-            fan_mode=FanMode(props["FanMode"]) if props["FanMode"] else None,
-            camera_power=bool(props["CameraPower"]),
         )
 
 
@@ -71,12 +67,6 @@ class DaemonClient(QObject):
 
     def set_extreme_cooling(self, on: bool) -> None:
         self._call("SetExtremeCooling", on)
-
-    def set_fan_mode(self, mode: FanMode) -> None:
-        self._call("SetFanMode", mode.value)
-
-    def set_camera_power(self, on: bool) -> None:
-        self._call("SetCameraPower", on)
 
     def _call(self, method: str, value: Any) -> None:
         def done(watcher: QDBusPendingCallWatcher) -> None:

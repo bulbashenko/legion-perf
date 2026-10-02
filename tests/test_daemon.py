@@ -11,7 +11,6 @@ from dbus_fast.aio import MessageBus
 from legion_perf import daemon
 from legion_perf.api import (
     BUS_NAME,
-    ERROR_INVALID_ARGS,
     ERROR_NOT_AUTHORIZED,
     ERROR_NOT_SUPPORTED,
     INTERFACE,
@@ -20,7 +19,7 @@ from legion_perf.api import (
 from legion_perf.daemon import LegionInterface, serve
 from legion_perf.hardware import Hardware
 
-from .conftest import EC_IO, IDEAPAD, ec_byte
+from .conftest import EC_IO, ec_byte
 
 
 class FakeAuthorizer:
@@ -89,10 +88,8 @@ async def env(dbus_address: str, fake_root: Path) -> AsyncIterator[Env]:
 
 async def test_get_all(env: Env) -> None:
     props = await env.props()
-    assert props["Features"] == ["extreme-cooling", "fan-mode", "camera-power"]
+    assert props["Features"] == ["extreme-cooling"]
     assert props["ExtremeCooling"] is False
-    assert props["FanMode"] == "standard"
-    assert props["CameraPower"] is True
 
 
 async def test_set_extreme_cooling(env: Env) -> None:
@@ -103,7 +100,7 @@ async def test_set_extreme_cooling(env: Env) -> None:
 
 
 async def test_authorizer_sees_real_caller(env: Env) -> None:
-    await env.call("SetCameraPower", "b", [False])
+    await env.call("SetExtremeCooling", "b", [True])
     assert env.auth.senders == [env.client.unique_name]
 
 
@@ -114,17 +111,6 @@ async def test_denied_call_does_not_touch_hardware(env: Env) -> None:
     assert reply.error_name == ERROR_NOT_AUTHORIZED
     assert ec_byte(env.root, 0xBD) == 0x00
     assert env.iface.desired == {}
-
-
-async def test_invalid_fan_mode(env: Env) -> None:
-    reply = await env.call("SetFanMode", "s", ["turbo"])
-    assert reply.error_name == ERROR_INVALID_ARGS
-    assert env.auth.senders == []
-
-
-async def test_set_fan_mode(env: Env) -> None:
-    await env.call("SetFanMode", "s", ["super-silent"])
-    assert (env.root / IDEAPAD / "fan_mode").read_text().strip() == "0"
 
 
 async def test_unsupported_feature(dbus_address: str, fake_root: Path) -> None:
@@ -174,12 +160,18 @@ async def test_properties_changed_signal(env: Env) -> None:
 async def test_restore_after_firmware_reset(env: Env) -> None:
     await env.call("SetExtremeCooling", "b", [True])
     (env.root / EC_IO).write_bytes(bytes(256))  # прошивка сбросила EC во сне
-    (env.root / IDEAPAD / "camera_power").write_text("0\n")  # не трогали через демон
 
     await env.iface.restore()
 
     assert ec_byte(env.root, 0xBD) == 0x40
-    assert (env.root / IDEAPAD / "camera_power").read_text().strip() == "0"
+
+
+async def test_restore_leaves_untouched_values(env: Env) -> None:
+    """После загрузки демон ничего не выставлял — восстанавливать нечего."""
+    (env.root / EC_IO).write_bytes(bytes([0x40]) * 256)
+    await env.iface.restore()
+    assert ec_byte(env.root, 0xBD) == 0x40
+    assert env.iface.desired == {}
 
 
 async def test_resume_signal_triggers_restore(env: Env, monkeypatch: pytest.MonkeyPatch) -> None:

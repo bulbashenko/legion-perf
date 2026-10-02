@@ -7,8 +7,8 @@
   <vendor_url>https://github.com/bulbashenko/legion-perf</vendor_url>
 
   <action id="io.github.bulbashenko.LegionPerf.configure">
-    <description>Change fan and camera settings</description>
-    <message>Authentication is required to change fan and camera settings</message>
+    <description>Change fan settings</description>
+    <message>Authentication is required to change fan settings</message>
     <defaults>
       <allow_any>auth_admin</allow_any>
       <allow_inactive>auth_admin</allow_inactive>

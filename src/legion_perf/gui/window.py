@@ -5,7 +5,6 @@ from __future__ import annotations
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QCloseEvent
 from PySide6.QtWidgets import (
-    QComboBox,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -16,15 +15,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ..api import FanMode, Feature
+from ..api import Feature
 from .client import DaemonState
-
-FAN_MODE_LABELS = {
-    FanMode.SUPER_SILENT: "Super silent",
-    FanMode.STANDARD: "Standard",
-    FanMode.DUST_CLEANING: "Dust cleaning",
-    FanMode.EFFICIENT_THERMAL_DISSIPATION: "Efficient thermal dissipation",
-}
 
 
 class MetricRow(QWidget):
@@ -96,8 +88,6 @@ class ToggleRow(QWidget):
 
 class MainWindow(QMainWindow):
     extreme_cooling_requested = Signal(bool)
-    camera_power_requested = Signal(bool)
-    fan_mode_requested = Signal(object)  # FanMode
     visibility_changed = Signal(bool)
 
     def __init__(self) -> None:
@@ -120,18 +110,7 @@ class MainWindow(QMainWindow):
         cl = QVBoxLayout(self.controls)
         cl.setSpacing(2)
         self.extreme_cooling = ToggleRow("❄  Extreme Cooling  (max fan speed)")
-        self.camera_power = ToggleRow("📷  Camera power")
-        self.fan_mode_row = QWidget()
-        fl = QHBoxLayout(self.fan_mode_row)
-        fl.setContentsMargins(20, 4, 0, 4)
-        fl.addWidget(QLabel("Fan mode"), 1)
-        self.fan_mode = QComboBox()
-        for mode, label in FAN_MODE_LABELS.items():
-            self.fan_mode.addItem(label, mode)
-        self.fan_mode.setFixedWidth(240)
-        fl.addWidget(self.fan_mode)
-        for w in (self.extreme_cooling, self.fan_mode_row, self.camera_power):
-            cl.addWidget(w)
+        cl.addWidget(self.extreme_cooling)
 
         self.status = QLabel("Connecting to daemon…")
         self.status.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -147,18 +126,11 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(central)
 
         self.extreme_cooling.toggled.connect(self.extreme_cooling_requested)
-        self.camera_power.toggled.connect(self.camera_power_requested)
-        self.fan_mode.activated.connect(lambda i: self.fan_mode_requested.emit(self.fan_mode.itemData(i)))
 
     def show_state(self, state: DaemonState) -> None:
         self.controls.setEnabled(True)
         self.extreme_cooling.setVisible(Feature.EXTREME_COOLING in state.features)
-        self.fan_mode_row.setVisible(Feature.FAN_MODE in state.features)
-        self.camera_power.setVisible(Feature.CAMERA_POWER in state.features)
         self.extreme_cooling.set_state(state.extreme_cooling)
-        self.camera_power.set_state(state.camera_power)
-        if state.fan_mode is not None:
-            self.fan_mode.setCurrentIndex(self.fan_mode.findData(state.fan_mode))
         if not state.features:
             self.status.setText("No supported controls found (is ec_sys loaded?)")
         elif self.status.text().startswith(("Connecting", "⚠ Daemon")):

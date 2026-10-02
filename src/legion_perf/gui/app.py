@@ -7,16 +7,16 @@ import os
 import sys
 
 from PySide6.QtCore import QObject, QThread, QTimer, Signal
-from PySide6.QtGui import QAction, QActionGroup
+from PySide6.QtGui import QAction
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
 
 from .. import __version__
-from ..api import FanMode, Feature
+from ..api import Feature
 from . import metrics
 from .client import DaemonClient, DaemonState
 from .icon import temp_icon
-from .window import FAN_MODE_LABELS, MainWindow
+from .window import MainWindow
 
 METRICS_INTERVAL_MS = 1000
 DAEMON_INTERVAL_MS = 5000
@@ -57,8 +57,6 @@ class Controller(QObject):
         self.client.unavailable.connect(self._on_unavailable)
         self.client.call_failed.connect(self.window.show_error)
         self.window.extreme_cooling_requested.connect(self.client.set_extreme_cooling)
-        self.window.camera_power_requested.connect(self.client.set_camera_power)
-        self.window.fan_mode_requested.connect(self.client.set_fan_mode)
         self.window.visibility_changed.connect(self._on_window_visibility)
 
         self.nvidia = NvidiaWorker(self)
@@ -90,18 +88,6 @@ class Controller(QObject):
         self._act_cooling.triggered.connect(self.client.set_extreme_cooling)
         menu.addAction(self._act_cooling)
 
-        self._fan_menu = menu.addMenu("Fan mode")
-        self._fan_group = QActionGroup(self)
-        self._fan_actions: dict[FanMode, QAction] = {}
-        for mode, label in FAN_MODE_LABELS.items():
-            action = QAction(label, self._fan_group, checkable=True)
-            action.triggered.connect(lambda _=False, m=mode: self.client.set_fan_mode(m))
-            self._fan_menu.addAction(action)
-            self._fan_actions[mode] = action
-
-        self._act_camera = QAction("📷  Camera power", self, checkable=True)
-        self._act_camera.triggered.connect(self.client.set_camera_power)
-        menu.addAction(self._act_camera)
         menu.addSeparator()
         menu.addAction("Quit").triggered.connect(self.app.quit)
 
@@ -120,14 +106,8 @@ class Controller(QObject):
         state = self.state
         cooling = bool(state and state.extreme_cooling)
         self.tray.setIcon(temp_icon(self.cpu_temp, cooling))
-        features = state.features if state else set()
-        self._act_cooling.setVisible(Feature.EXTREME_COOLING in features)
+        self._act_cooling.setVisible(bool(state and Feature.EXTREME_COOLING in state.features))
         self._act_cooling.setChecked(cooling)
-        self._fan_menu.menuAction().setVisible(Feature.FAN_MODE in features)
-        if state and state.fan_mode:
-            self._fan_actions[state.fan_mode].setChecked(True)
-        self._act_camera.setVisible(Feature.CAMERA_POWER in features)
-        self._act_camera.setChecked(bool(state and state.camera_power))
 
     def _on_tray_activated(self, reason: QSystemTrayIcon.ActivationReason) -> None:
         if reason == QSystemTrayIcon.ActivationReason.Trigger:

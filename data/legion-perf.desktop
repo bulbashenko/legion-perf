@@ -2,7 +2,7 @@
 Type=Application
 Name=Legion Performance Controller
 GenericName=Fan control
-Comment=Extreme Cooling, fan mode and hardware monitoring for Lenovo Legion
+Comment=Extreme Cooling and hardware monitoring for Lenovo Legion
 Exec=legion-perf
 Icon=legion-perf
 Terminal=false

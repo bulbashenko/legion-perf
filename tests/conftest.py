@@ -10,19 +10,14 @@ import pytest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 EC_IO = "sys/kernel/debug/ec/ec0/io"
-IDEAPAD = "sys/bus/platform/drivers/ideapad_acpi/VPC2004:00"
 
 
 @pytest.fixture
 def fake_root(tmp_path: Path) -> Path:
-    """Фейковое дерево sysfs/debugfs: 256-байтный EC и атрибуты ideapad_laptop."""
+    """Фейковое дерево debugfs: 256-байтный EC."""
     ec = tmp_path / EC_IO
     ec.parent.mkdir(parents=True)
     ec.write_bytes(bytes(256))
-    ideapad = tmp_path / IDEAPAD
-    ideapad.mkdir(parents=True)
-    (ideapad / "fan_mode").write_text("1\n")
-    (ideapad / "camera_power").write_text("1\n")
     return tmp_path
 
 

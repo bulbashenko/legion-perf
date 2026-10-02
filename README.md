@@ -1,6 +1,6 @@
 # Legion Performance Controller
 
-Extreme Cooling, fan mode, camera power and hardware monitoring for the **Lenovo Legion Y720** on Linux.
+Extreme Cooling (fans at maximum) and hardware monitoring for the **Lenovo Legion Y720** on Linux.
 
 ![Legion Performance Controller](image.png)
 
@@ -18,25 +18,16 @@ CPU/GPU performance profiles are intentionally left to the system (`power-profil
 │ tray + window        │  io.github.       │  polkit check per call    │
 │ runs as your user    │  bulbashenko.     │  restores state on resume │
 │ reads /proc, /sys    │  LegionPerf       │                           │
-└──────────────────────┘                   └──────┬─────────────┬──────┘
-                                                  │             │
-                                     ec_sys (EC 0xBD)   ideapad_laptop sysfs
-                                                         (fan_mode, camera_power)
+└──────────────────────┘                   └──────┬────────────────────┘
+                                                  │
+                                          ec_sys (EC register 0xBD)
 ```
 
 - **`legion-perfd`** — a small systemd service and the only privileged part. It exposes a D-Bus API and checks every change with polkit (`io.github.bulbashenko.LegionPerf.configure`). The active local session needs no password; remote and inactive sessions need admin authentication. Reading state is open to everyone.
-- **`legion-perf`** — unprivileged Qt tray app. It shows the CPU temperature in the tray icon (green < 70 °C, yellow < 85 °C, red above; a blue frame means Extreme Cooling is on). The window has CPU/RAM/iGPU/NVIDIA metrics and the controls.
-- **State:** settings changed through the daemon are re-applied after resume from suspend. After a reboot nothing is touched: the firmware defaults apply, so Extreme Cooling starts off.
+- **`legion-perf`** — unprivileged Qt tray app. It shows the CPU temperature in the tray icon (green < 70 °C, yellow < 85 °C, red above; a blue frame means Extreme Cooling is on). The window has CPU/RAM/iGPU/NVIDIA metrics and the Extreme Cooling switch.
+- **State:** Extreme Cooling set through the daemon is re-applied after resume from suspend. After a reboot nothing is touched: the firmware defaults apply, so Extreme Cooling starts off.
 
-## Features
-
-| Feature | Kernel interface |
-|---|---|
-| Extreme Cooling (fans at max) | EC register `0xBD` via `ec_sys` |
-| Fan mode | `ideapad_laptop` `fan_mode` |
-| Camera power | `ideapad_laptop` `camera_power` |
-
-### Why Extreme Cooling goes through `ec_sys`
+## Why Extreme Cooling goes through `ec_sys`
 
 On Windows this is the WMI method `SetFanCooling` on `LENOVO_GAMEZONE_DATA`. On Linux no driver implements it for the Y720:
 
@@ -46,6 +37,12 @@ On Windows this is the WMI method `SetFanCooling` on `LENOVO_GAMEZONE_DATA`. On 
 `ec_sys` is the least invasive working option. It writes through the kernel's ACPI EC driver with its locking, unlike raw `/dev/port` I/O, and uses the same register and values as LenovoLegionLinux (`EXT_MAXIMUMFANSPEED`).
 
 The proper long-term fix would be `pwm1_enable` support in `lenovo-wmi-gamezone` backed by `SetFanCooling`. The daemon keeps hardware access behind a small `Control` interface (`src/legion_perf/hardware.py`), so such a backend can replace `ec_sys` without touching anything else.
+
+---
+
+### Not supported: `fan_mode` and `camera_power`
+
+`ideapad_laptop` exposes both attributes on the Y720, but the firmware ignores writes and always reads back `0` (verified on BIOS 4GCN38WW). The driver creates them whenever the firmware answers the read command, so their presence in sysfs does not mean they work.
 
 ---
 
@@ -86,12 +83,10 @@ Bus name and interface `io.github.bulbashenko.LegionPerf`, object `/io/github/bu
 
 | Member | Type | |
 |---|---|---|
-| `Features` | property `as` | available of `extreme-cooling`, `fan-mode`, `camera-power` |
+| `Features` | property `as` | `extreme-cooling` when `ec_sys` is available |
 | `ExtremeCooling` | property `b` | |
-| `FanMode` | property `s` | `super-silent`, `standard`, `dust-cleaning`, `efficient-thermal-dissipation` |
-| `CameraPower` | property `b` | |
 | `Version` | property `s` | |
-| `SetExtremeCooling(b)`, `SetFanMode(s)`, `SetCameraPower(b)` | methods | polkit-checked |
+| `SetExtremeCooling(b)` | method | polkit-checked |
 
 Changes emit `org.freedesktop.DBus.Properties.PropertiesChanged`. From the shell:
 
@@ -102,7 +97,7 @@ busctl call io.github.bulbashenko.LegionPerf /io/github/bulbashenko/LegionPerf \
   io.github.bulbashenko.LegionPerf SetExtremeCooling b true
 ```
 
-Errors: `….Error.NotAuthorized`, `….Error.NotSupported`, `….Error.InvalidArgs`, `….Error.Hardware`.
+Errors: `….Error.NotAuthorized`, `….Error.NotSupported`, `….Error.Hardware`.
 
 ---
 
@@ -131,6 +126,6 @@ To run the daemon by hand without root, on the session bus and without polkit:
 
 **Window says "Daemon is not available"** — `systemctl status legion-perfd` and `journalctl -u legion-perfd`.
 
-**Extreme Cooling is missing from the controls** — `ec_sys` is not loaded with write support. Check that `cat /sys/module/ec_sys/parameters/write_support` prints `Y`, and that `/sys/kernel/security/lockdown` shows `[none]` (kernel lockdown blocks debugfs writes).
+**Extreme Cooling switch is missing** — `ec_sys` is not loaded with write support. Check that `cat /sys/module/ec_sys/parameters/write_support` prints `Y`, and that `/sys/kernel/security/lockdown` shows `[none]` (kernel lockdown blocks debugfs writes).
 
 **NVIDIA row shows "suspended (D3)"** — the dGPU is runtime-suspended and is deliberately not polled, because `nvidia-smi` would wake it. Pascal cards such as the GTX 1060 do not support runtime D3, so on the Y720 the row always shows live data.
